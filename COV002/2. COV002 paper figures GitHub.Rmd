@@ -1,0 +1,379 @@
+---
+title: "Figures and tables for COV002 analysis"
+output: html_document
+---
+
+
+#1. Setup
+
+a) Run "1. COV002 VE analysis GitHub" or download generated model fits:
+
+- fit_cov_sens_spec.rds = final model, average population characteristics
+- fit_cov_sens_spec_fig.rds = final model, reference population characteristics
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/lrw19/OneDrive - Imperial College London/Documents/PhD Project/RStan Model/GitHub files")
+setwd("C:/Users/lrw19/OneDrive - Imperial College London/Documents/PhD Project/RStan Model/GitHub files")
+mod_av <- readRDS("fit_cov_sens_spec.rds")#final model, average population characteristics
+mod_30 <- readRDS("fit_cov_sens_spec_fig.rds")#final model, reference population characteristics
+```
+
+
+```{r}
+library("ggplot2")
+library("dplyr")
+lci<-function(x){quantile(x, 0.025)}
+uci<-function(x){quantile(x, 0.975)}
+```
+
+
+#2. Calculate relative estimates
+
+To get the estimates for the text in the paper (e.g. difference in FOI by age), use the averages model.
+
+```{r absolute parameter ests all}
+pars_rel<-c("FOI_diff_cov1", "FOI_diff_cov2", "FOI_diff_cov3",
+            "OR_ps_diff_cov1", "OR_ps_diff_cov2", "OR_ps_diff_cov3", "OR_ps_diff_cov4", "OR_ps_diff_cov5",
+            "PS_diff_cov1", "PS_diff_cov2", "PS_diff_cov3", "PS_diff_cov4", "PS_diff_cov5",
+            "RR_in_diff_cov3", "RR_in_diff_cov3_30yrs", 
+            "RR_pr_diff_cov3", "RR_pr_diff_cov5", "RR_pr_diff_cov3_30yrs"
+           )
+```
+
+
+```{r convert to dataframe}
+dat_mod_fin<-as.data.frame(mod_av)
+dat_mod_fin<-dat_mod_fin%>%
+  select(c(pars_rel))
+dat_mod_fin
+
+summary(dat_mod_fin)
+```
+
+```{r estimates}
+summary_dat_means<-
+  dat_mod_fin%>%
+summarise(across(c(FOI_diff_cov1, FOI_diff_cov2, FOI_diff_cov3,
+            OR_ps_diff_cov1, OR_ps_diff_cov2, OR_ps_diff_cov3, OR_ps_diff_cov4, OR_ps_diff_cov5,
+            PS_diff_cov1, PS_diff_cov2, PS_diff_cov3, PS_diff_cov4, PS_diff_cov5,
+            RR_in_diff_cov3, RR_in_diff_cov3_30yrs, 
+            RR_pr_diff_cov3, RR_pr_diff_cov3_30yrs, RR_pr_diff_cov5),
+             .fns = list(mean=mean))
+)
+
+summary_dat_lci<-
+  dat_mod_fin%>%
+summarise(across(c(FOI_diff_cov1, FOI_diff_cov2, FOI_diff_cov3,
+            OR_ps_diff_cov1, OR_ps_diff_cov2, OR_ps_diff_cov3, OR_ps_diff_cov4, OR_ps_diff_cov5,
+            PS_diff_cov1, PS_diff_cov2, PS_diff_cov3, PS_diff_cov4, PS_diff_cov5,
+            RR_in_diff_cov3, RR_in_diff_cov3_30yrs, 
+            RR_pr_diff_cov3, RR_pr_diff_cov3_30yrs, RR_pr_diff_cov5),
+             .fns = list(lci=lci))
+)
+
+summary_dat_uci<-
+  dat_mod_fin%>%
+summarise(across(c(FOI_diff_cov1, FOI_diff_cov2, FOI_diff_cov3,
+            OR_ps_diff_cov1, OR_ps_diff_cov2, OR_ps_diff_cov3, OR_ps_diff_cov4, OR_ps_diff_cov5,
+            PS_diff_cov1, PS_diff_cov2, PS_diff_cov3, PS_diff_cov4, PS_diff_cov5,
+            RR_in_diff_cov3, RR_in_diff_cov3_30yrs, 
+            RR_pr_diff_cov3, RR_pr_diff_cov3_30yrs, RR_pr_diff_cov5),
+             .fns = list(uci=uci))
+)
+```
+
+```{r calculate differences}
+#FOI - age
+round(summary_dat_means$FOI_diff_cov3_mean, digits = 2)
+round(summary_dat_lci$FOI_diff_cov3_lci, digits = 3)
+round(summary_dat_uci$FOI_diff_cov3_uci, digits = 2)
+
+summary_dat_means
+summary_dat_lci
+summary_dat_uci
+```
+
+
+# 3. Table of average estimates
+
+## a. choose variables
+
+This is run with model with age centered around the mean (~45yrs)
+
+```{r average parameter estimates}
+pars_ab_av<-c("FOI_p",
+           "PS_p",
+           "VE_in",
+           "VE_pr",
+           "VE_sym",
+           "VE_asym"
+           )
+
+```
+
+```{r convert to dataframe bias}
+dat_mod_av<-as.data.frame(mod_av)
+dat_mod_av<-dat_mod_av%>%
+  select(c(pars_ab_av))
+dat_mod_av
+```
+
+## b. create summary data for table
+
+```{r create table bias}
+summary_dat_means<-
+  dat_mod_av%>%
+summarise(across(c(FOI_p, PS_p, VE_in, VE_pr, VE_sym, VE_asym),
+             .fns = list(mean=mean))
+)
+summary_dat_lci<-
+  dat_mod_av%>%
+summarise(across(c(FOI_p, PS_p, VE_in, VE_pr, VE_sym, VE_asym),
+             .fns = list(lci=lci))
+)
+summary_dat_uci<-
+  dat_mod_av%>%
+summarise(across(c(FOI_p, PS_p, VE_in, VE_pr, VE_sym, VE_asym),
+             .fns = list(uci=uci))
+)
+params= c(c("FOI", "PS_p", "VE_in", "VE_pr", "VE_sym", "VE_asym"))
+covariates=c(pars_ab_av)
+means=as.numeric(summary_dat_means[1,])
+ucis=as.numeric(summary_dat_uci[1,])
+lcis=as.numeric(summary_dat_lci[1,])
+
+summarydat<-data.frame(params, covariates, means, ucis, lcis)
+summarydat$covariates <- as.character(summarydat$covariates)
+summarydat$covariates <- factor(summarydat$covariates, levels=unique(summarydat$covariates))
+summarydat$covs_written<-c("FOI", "PS_p", "VEin", "VEpr", "VEsym", "VEasym" )
+summarydat$covs_written <- as.character(summarydat$covs_written)
+summarydat$covs_written <- factor(summarydat$covs_written, levels=unique(summarydat$covs_written))
+
+#create table
+summarydat$means_r<- round(summarydat$means, digits=2)
+summarydat$lcis_r<- round(summarydat$lcis, digits=2)
+summarydat$ucis_r<- round(summarydat$ucis, digits=2)
+
+avs_bias<-summarydat[,c( "covs_written", "means_r", "lcis_r", "ucis_r", "means", "lcis", "ucis")]
+avs_bias
+```
+
+
+# 4. Absoulte estimates figure
+
+## a. choose variables
+
+mod_30 is the model to use. This is the final model with all selected covariates, with age centered around 30. 
+
+```{r absolute parameter ests all}
+pars_ab<-c("FOI_p_ref", "FOI_p_cov1", "FOI_p_cov2", "FOI_p_cov3_30yrs", "FOI_p_cov4", "FOI_p_cov5", 
+           "PS_p_ref", "PS_p_cov1", "PS_p_cov2", "PS_p_cov3_30yrs", "PS_p_cov4", "PS_p_cov5", 
+           "VE_in_ref",  "VE_in_cov1", "VE_in_cov2", "VE_in_cov3_30yrs", "VE_in_cov4", "VE_in_cov5",
+           "VE_pr_ref", "VE_pr_cov1", "VE_pr_cov2", "VE_pr_cov3_30yrs", "VE_pr_cov4", "VE_pr_cov5", 
+           "VE_sym_ref", "VE_sym_cov1", "VE_sym_cov2", "VE_sym_cov3_30yrs", "VE_sym_cov4", "VE_sym_cov5", 
+           "VE_asym_ref", "VE_asym_cov1", "VE_asym_cov2", "VE_asym_cov3_30yrs", "VE_asym_cov4", "VE_asym_cov5" 
+           )
+```
+
+```{r convert to dataframe}
+dat_mod_fin<-as.data.frame(mod_30)
+dat_mod_fin<-dat_mod_fin%>%
+  select(c(pars_ab))
+dat_mod_fin
+```
+
+## b. create summary data for figures
+
+Note using cov3_30yrs as this shows the difference between a 60 and 30 year old.
+
+```{r create summary dataset}
+summary_dat_means<-
+  dat_mod_fin%>%
+summarise(across(c(FOI_p_ref, FOI_p_cov1, FOI_p_cov2, FOI_p_cov3_30yrs, FOI_p_cov4, FOI_p_cov5,  
+  PS_p_ref, PS_p_cov1, PS_p_cov2, PS_p_cov3_30yrs, PS_p_cov4, PS_p_cov5, 
+  VE_in_ref, VE_in_cov1, VE_in_cov2, VE_in_cov3_30yrs, VE_in_cov4, VE_in_cov5,  
+  VE_pr_ref, VE_pr_cov1, VE_pr_cov2, VE_pr_cov3_30yrs, VE_pr_cov4, VE_pr_cov5, 
+  VE_sym_ref, VE_sym_cov1, VE_sym_cov2, VE_sym_cov3_30yrs, VE_sym_cov4, VE_sym_cov5,
+  VE_asym_ref, VE_asym_cov1, VE_asym_cov2, VE_asym_cov3_30yrs, VE_asym_cov4, VE_asym_cov5),
+             .fns = list(mean=mean))
+)
+
+summary_dat_lci<-
+  dat_mod_fin%>%
+summarise(across(c(FOI_p_ref, FOI_p_cov1, FOI_p_cov2, FOI_p_cov3_30yrs, FOI_p_cov4, FOI_p_cov5,  
+  PS_p_ref, PS_p_cov1, PS_p_cov2, PS_p_cov3_30yrs, PS_p_cov4, PS_p_cov5, 
+  VE_in_ref, VE_in_cov1, VE_in_cov2, VE_in_cov3_30yrs, VE_in_cov4, VE_in_cov5,  
+  VE_pr_ref, VE_pr_cov1, VE_pr_cov2, VE_pr_cov3_30yrs, VE_pr_cov4, VE_pr_cov5, 
+  VE_sym_ref, VE_sym_cov1, VE_sym_cov2, VE_sym_cov3_30yrs, VE_sym_cov4, VE_sym_cov5,
+  VE_asym_ref, VE_asym_cov1, VE_asym_cov2, VE_asym_cov3_30yrs, VE_asym_cov4, VE_asym_cov5),
+             .fns = list(lci=lci))
+)
+
+summary_dat_uci<-
+  dat_mod_fin%>%
+summarise(across(c(FOI_p_ref, FOI_p_cov1, FOI_p_cov2, FOI_p_cov3_30yrs, FOI_p_cov4, FOI_p_cov5,  
+  PS_p_ref, PS_p_cov1, PS_p_cov2, PS_p_cov3_30yrs, PS_p_cov4, PS_p_cov5, 
+  VE_in_ref, VE_in_cov1, VE_in_cov2, VE_in_cov3_30yrs, VE_in_cov4, VE_in_cov5,  
+  VE_pr_ref, VE_pr_cov1, VE_pr_cov2, VE_pr_cov3_30yrs, VE_pr_cov4, VE_pr_cov5, 
+  VE_sym_ref, VE_sym_cov1, VE_sym_cov2, VE_sym_cov3_30yrs, VE_sym_cov4, VE_sym_cov5,
+  VE_asym_ref, VE_asym_cov1, VE_asym_cov2, VE_asym_cov3_30yrs, VE_asym_cov4, VE_asym_cov5),
+             .fns = list(uci=uci))
+)
+
+params= c(rep("FOI", 6), rep("PS", 6), rep("VEin", 6), rep("VEpr", 6), rep("VEsym", 6), rep("VEasym", 6))
+covariates=c(pars_ab)
+means=as.numeric(summary_dat_means[1,])
+ucis=as.numeric(summary_dat_uci[1,])
+lcis=as.numeric(summary_dat_lci[1,])
+
+summarydat<-data.frame(params, covariates, means, ucis, lcis)
+
+summarydat$covariates <- as.character(summarydat$covariates)
+summarydat$covariates <- factor(summarydat$covariates, levels=unique(summarydat$covariates))
+
+summarydat$covs_written<-c("FOI ref.", "HCW (0 COVID-19 patients)", "HCW (1+ COVID-19 patients)", "Age (60 years)", "Obese (yes)", "Non-white (yes)",
+  "Prob. symptoms ref.", "HCW (0 COVID-19 patients)", "HCW (1+ COVID-19 patients)", "Age (60 years)", "Obese (yes)", "Non-white (yes)",
+  "VEin ref.", "HCW (0 COVID-19 patients)", "HCW (1+ COVID-19 patients)", "Age (60 years)", "Obese (yes)", "Non-white (yes)",
+  "VEpr ref.", "HCW (0 COVID-19 patients)", "HCW (1+ COVID-19 patients)", "Age (60 years)", "Obese (yes)", "Non-white (yes)",
+  "VEsym ref.", "HCW (0 COVID-19 patients)", "HCW (1+ COVID-19 patients)", "Age (60 years)", "Obese (yes)", "Non-white (yes)",
+  "VEasym ref.", "HCW (0 COVID-19 patients)", "HCW (1+ COVID-19 patients)", "Age (60 years)", "Obese (yes)", "Non-white (yes)"
+  )
+
+
+summarydat$covs_written <- as.character(summarydat$covs_written)
+summarydat$covs_written <- factor(summarydat$covs_written, levels=unique(summarydat$covs_written))
+```
+
+
+```{r table}
+summarydat$means_r<- round(summarydat$means, digits=2)
+summarydat$lcis_r<- round(summarydat$lcis, digits=2)
+summarydat$ucis_r<- round(summarydat$ucis, digits=2)
+
+summarydat[,c( "covs_written", "means_r", "lcis_r", "ucis_r")]
+```
+
+## c. create figures
+
+```{r figure setup}
+summarydat$ref="2. No"
+summarydat$ref[c(1,7,13,19, 25, 31)]<-"1. Yes"
+FOI_dat<-summarydat[which(summarydat$params=="FOI"),]
+PS_dat<-summarydat[which(summarydat$params=="PS"),]
+VEin_dat<-summarydat[which(summarydat$params=="VEin"),]
+VEpr_dat<-summarydat[which(summarydat$params=="VEpr"),]
+VEsym_dat<-summarydat[which(summarydat$params=="VEsym"),]
+VEasym_dat<-summarydat[which(summarydat$params=="VEasym"),]
+
+```
+
+So the non-significant variables don't show an estimate (may mislead), convert them to NA. 
+
+```{r remove non significant predictors}
+FOI_dat[which(FOI_dat$covariates == "FOI_p_cov4" | FOI_dat$covariates == "FOI_p_cov5" ),]$means<-NA
+FOI_dat[which(FOI_dat$covariates == "FOI_p_cov4" | FOI_dat$covariates == "FOI_p_cov5" ),]$lcis<-NA
+FOI_dat[which(FOI_dat$covariates == "FOI_p_cov4" | FOI_dat$covariates == "FOI_p_cov5" ),]$ucis<-NA
+
+
+VEin_dat[which(VEin_dat$covariates == "VE_in_cov4" | VEin_dat$covariates == "VE_in_cov5" | VEin_dat$covariates == "VE_in_cov1" | VEin_dat$covariates == "VE_in_cov2" ),]$means<-NA
+VEin_dat[which(VEin_dat$covariates == "VE_in_cov4" | VEin_dat$covariates == "VE_in_cov5" | VEin_dat$covariates == "VE_in_cov1" | VEin_dat$covariates == "VE_in_cov2" ),]$lcis<-NA
+VEin_dat[which(VEin_dat$covariates == "VE_in_cov4" | VEin_dat$covariates == "VE_in_cov5" | VEin_dat$covariates == "VE_in_cov1" | VEin_dat$covariates == "VE_in_cov2" ),]$ucis<-NA
+```
+
+FOI 
+```{r FOI figure}
+yinter=FOI_dat$means[1]
+FOI_plot<-ggplot(data=FOI_dat, aes(x=covariates, y=means, ymin=lcis, ymax=ucis, color=covariates)) +
+        geom_pointrange(size=1.1) + 
+        coord_flip(ylim = c(0,1)) + 
+        labs(y="Mean (95% CI)", x="", title="Force of Infection")+
+        scale_y_continuous(breaks=seq(0,1,0.1), labels = c("0", "", "0.2", "", "0.4", "", "0.6", "", "0.8", "", "1.0"))+
+        scale_x_discrete(limits=rev ,
+                         labels=c(c("Non-white", "Obese", "60 year old", "HCW (1+ COVID-19 patients)", "HCW (0 COVID-19 patients)", "Reference*"))
+                         )+
+        theme_bw() + 
+        theme(strip.placement = "null",  
+              legend.position = "null",
+              plot.title = element_text(hjust = 0.5, size=18),
+              strip.background = element_blank(),
+              strip.text = element_blank(),
+              axis.text = element_text(size = 16),
+              axis.title = element_text(size = 16))+
+  geom_hline(yintercept = yinter, linetype="dashed", color="red", alpha=0.7, size=1)+
+  scale_color_manual(
+    values =c("red", "black", "black", "black", "grey", "grey"))
+FOI_plot
+```
+PS
+```{r PS figure}
+yinter=PS_dat$means[1]
+PS_plot<-ggplot(data=PS_dat, aes(x=covariates, y=means, ymin=lcis, ymax=ucis, color=covariates)) +
+        geom_pointrange(size=1.1) + 
+        coord_flip(ylim = c(0,1)) + 
+        labs(y="Mean (95% CI)", x="", title="Probability of Symptoms")+
+        scale_y_continuous(breaks=seq(0,1,0.1), labels = c("0", "", "0.2", "", "0.4", "", "0.6", "", "0.8", "", "1.0"))+
+        scale_x_discrete(limits=rev ,
+                         labels=c(c("Non-white", "Obese", "60 year old", "HCW (1+ COVID-19 patients)", "HCW (0 COVID-19 patients)", "Reference*"))
+                         )+
+        theme_bw() + 
+        theme(strip.placement = "null",  
+              legend.position = "null",
+              plot.title = element_text(hjust = 0.5, size=18),
+              strip.background = element_blank(),
+              strip.text = element_blank(),
+              axis.text = element_text(size = 16),
+              axis.title = element_text(size = 16))+
+  geom_hline(yintercept = yinter, linetype="dashed", color="red", alpha=0.7, size=1)+
+  scale_color_manual(
+    values =c("red", rep("black",5)))
+PS_plot
+```
+VEin
+```{r VEin figure}
+yinter=VEin_dat$means[1]
+VEin_plot<-ggplot(data=VEin_dat, aes(x=covariates, y=means, ymin=lcis, ymax=ucis, color=covariates)) +
+        geom_pointrange(size=1.1) + 
+        coord_flip(ylim = c(0,1)) + 
+        labs(y="Mean (95% CI)", x="", title="VE against infection")+
+        scale_y_continuous(breaks=seq(0,1,0.1), labels = c("0", "", "0.2", "", "0.4", "", "0.6", "", "0.8", "", "1.0"))+
+        scale_x_discrete(limits=rev ,
+                         labels=c(c("Non-white", "Obese", "60 year old", "HCW (1+ COVID-19 patients)", "HCW (0 COVID-19 patients)", "Reference*"))
+                         )+
+        theme_bw() + 
+        theme(strip.placement = "null",  
+              legend.position = "null",
+              plot.title = element_text(hjust = 0.5, size=18),
+              strip.background = element_blank(),
+              strip.text = element_blank(),
+              axis.text = element_text(size = 16),
+              axis.title = element_text(size = 16))+
+  geom_hline(yintercept = yinter, linetype="dashed", color="red", alpha=0.7, size=1)+
+  scale_color_manual(
+    values =c("red", "grey", "grey", "black", "grey",  "grey"))
+VEin_plot
+```
+VEpr
+```{r VEpr figure}
+yinter=VEpr_dat$means[1]
+VEpr_plot<-ggplot(data=VEpr_dat, aes(x=covariates, y=means, ymin=lcis, ymax=ucis, color=ref)) +
+        geom_pointrange(size=1.1) + 
+        coord_flip(ylim = c(0,1)) + 
+        labs(y="Mean (95% CI)", x="", title="VE against progression to symptoms")+
+        scale_y_continuous(breaks=seq(0,1,0.1), labels = c("0", "", "0.2", "", "0.4", "", "0.6", "", "0.8", "", "1.0"))+
+        scale_x_discrete(limits=rev ,
+                         labels=c(c("Non-white", "Obese", "60 year old", "HCW (1+ COVID-19 patients)", "HCW (0 COVID-19 patients)", "Reference*"))
+                         )+
+        theme_bw() + 
+        theme(strip.placement = "null",  
+              legend.position = "null",
+              plot.title = element_text(hjust = 0.5, size=18),
+              strip.background = element_blank(),
+              strip.text = element_blank(),
+              axis.text = element_text(size = 16),
+              axis.title = element_text(size = 16))+
+  geom_hline(yintercept = yinter, linetype="dashed", color="red", alpha=0.7, size=1)+
+  scale_color_manual(
+    values =c("red", rep("black",5)))
+VEpr_plot
+```

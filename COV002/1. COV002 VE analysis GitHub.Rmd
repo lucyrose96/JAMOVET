@@ -1,0 +1,412 @@
+---
+title: "COV002 VE analysis"
+---
+
+# 1. Setup
+
+Model_data is the COV002 data file of all eligible participants, in wide format. The variables used in this model are:
+
+- C: number of symptomatic cases
+- A: number of asymptomatic cases
+- vaccinated: indicator variable of trial arm (0=control, 1=vaccine)
+- pers_yrs_at_risk: time between 2 weeks post second dose and censoring (first of i. infection, ii. unblinding, iii. 25th february 2021 datacut)
+- fp: probability of a false positive during follow-up
+- sensitivity: probability of asymptomatic infection detection
+- HCW_0: indicator variable of healthcare worker without COVID patients
+- HCW_1plus: indicator variable of healthcare worker with 1 or more daily COVID patients
+- sc_age_decades_30 and sc_age_decades_cen: age (decades), centred either on 30 years or the average age in the population
+- obese: indicator variable for obesity (0= not obese, 1=obese)
+- nonwhite: indicator variable for non-white ethnicity (0=white, 1=non-white)
+
+
+a) download data (model_data)
+b) install required packages
+c) set up for parallel processing
+d) set initial values for MCMC
+
+```{r setup}
+setwd("C:/Users/lrw19/OneDrive - Imperial College London/Documents/PhD Project/RStan Model/GitHub files")
+library("rstan")
+library("loo")
+library("ggplot2")
+library("dplyr")
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+num_subjects=nrow(model_data)
+```
+
+```{r pars}
+pars=c("VE_in", "VE_pr", "VE_sym", "VE_asym", "FOI_p", "PS_p")
+```
+
+```{r initial values function}
+init_f <- function () list(alpha_ref = max(0, rnorm(1, 0, 0.1)), 
+                           alpha1 = max(0, rnorm(1, 0, 0.1)),
+                           alpha2 = max(0, rnorm(1, 0, 0.1)),
+                           alpha3 = max(0, rnorm(1, 0, 0.1)),
+                           alpha4 = max(0, rnorm(1, 0, 0.1)),
+                           alpha5 = max(0, rnorm(1, 0, 0.1)),
+                           
+                           beta_ref = max(0, rnorm(1, 0, 0.1)), 
+                           beta1 = max(0, rnorm(1, 0, 0.1)),
+                           beta2 = max(0, rnorm(1, 0, 0.1)),
+                           beta3 = max(0, rnorm(1, 0, 0.1)),
+                           beta4 = max(0, rnorm(1, 0, 0.1)),
+                           beta5 = max(0, rnorm(1, 0, 0.1)),
+                           
+                           gam_ref = max(0, rnorm(1, 0, 0.1)), 
+                           gam1 = max(0, rnorm(1, 0, 0.1)),
+                           gam2 = max(0, rnorm(1, 0, 0.1)),
+                           gam3 = max(0, rnorm(1, 0, 0.1)),
+                           gam4 = max(0, rnorm(1, 0, 0.1)),
+                           gam5 = max(0, rnorm(1, 0, 0.1)),
+                           
+                           delta_ref = max(0, rnorm(1, 0, 0.1)), 
+                           delta1 = max(0, rnorm(1, 0, 0.1)),
+                           delta2 = max(0, rnorm(1, 0, 0.1)),
+                           delta3 = max(0, rnorm(1, 0, 0.1)),
+                           delta4 = max(0, rnorm(1, 0, 0.1)),
+                           delta5 = max(0, rnorm(1, 0, 0.1))
+                           
+                           )
+```
+
+# 2. Rstan models evaluating individual contributions of bias and covariate adjustment
+
+## a. no bias or covariate adjustment
+
+```{r fit_bl}
+trial_dat <- list(N=num_subjects,
+                  C=model_data$C,
+                  A=model_data$A,
+                  vaccinated=model_data$vaccinated,
+                  pers_yrs_at_risk=model_data$pers_yrs_at_risk
+                  ) 
+model <- stan_model(file = 'mod_bl.stan')
+timetaken<-system.time(fit_bl<-sampling(object = model, data = trial_dat, chains = 4, cores = 4))
+
+plot(fit_bl, pars = pars)
+print(fit_bl, pars = pars)
+traceplot(fit_bl, pars = pars, inc_warmup = TRUE)
+pairs(fit_bl, pars = pars)
+```
+
+```{r save fit_bl}
+#save as RDS
+fit_bl@stanmodel@dso <- new("cxxdso")
+saveRDS(fit_bl, file = "fit_bl.rds")
+```
+
+```{r fit_bl likelihood}
+log_lik_bl <- extract_log_lik(fit_bl)
+loo_bl <- loo(log_lik_bl)
+print(loo_bl)
+```
+
+
+## b. differential detection bias adjustment
+
+
+```{r fit_sens}
+model_data$sensitivity[which(model_data$sensitivity == 0)]<-0.01 # To allow the model to run, all participants must have >0% probability of asymptomatic infection detection. Adjust any 0% to 1%.
+spec_asym<-1 #not adjusting for imperfect test specificity so assume =100% 
+model_data$mean_numtests<-mean(model_data$num_asym_swabs) 
+model_data$fp_mean<-model_data$mean_numtests*(1-spec_asym) #mean number of false positives (=0)
+
+trial_dat <- list(N=num_subjects, 
+                  C=model_data$C,
+                  A=model_data$A,
+                  fp=model_data$fp_mean,
+                  vaccinated=model_data$vaccinated,
+                  rel_sens_asym=model_data$sensitivity,
+                  pers_yrs_at_risk=model_data$pers_yrs_at_risk
+)
+
+model <- stan_model(file = 'mod_bias.stan')
+timetaken<-system.time(fit_sens<-sampling(object = model, data = trial_dat, chains = 4, cores = 4))
+
+print(fit_sens, pars = pars)
+plot(fit_sens, pars = pars)
+traceplot(fit_sens, pars = pars, inc_warmup = TRUE)
+pairs(fit_sens, pars = pars)
+```
+
+```{r save fit_sens}
+#save as RDS
+fit_sens@stanmodel@dso <- new("cxxdso")
+saveRDS(fit_sens, file = "fit_sens.rds")
+```
+
+```{r fit_sens likelihood}
+log_lik_sens <- extract_log_lik(fit_sens)
+loo_sens <- loo(log_lik_sens)
+print(loo_sens)
+```
+
+## c. specificity bias adjustment
+
+
+```{r fit_spec}
+spec_asym<-0.99984
+model_data$fp<-model_data$num_asym_swabs*(1-spec_asym) #probability of false positive pp
+model_data$fp[which(model_data$fp == 0)]<-0.000160000000000049 #set number of false positives of non-responders to the minimum value (1 swab provided)
+model_data$sensitivity_1<-1 #assume probability asymptomatic infection detection =100%
+trial_dat <- list(N=num_subjects,
+                  C=model_data$C,
+                  A=model_data$A,
+                  fp=model_data$fp,
+                  vaccinated=model_data$vaccinated,
+                  rel_sens_asym=model_data$sensitivity_1,
+                  pers_yrs_at_risk=model_data$pers_yrs_at_risk
+)
+model <- stan_model(file = 'mod_bias.stan')
+timetaken<-system.time(fit_spec<-sampling(object = model, data = trial_dat, chains = 4, cores = 4))
+
+print(fit_spec, pars = pars)
+plot(fit_spec, pars = pars)
+traceplot(fit_spec, pars = pars, inc_warmup = TRUE)
+pairs(fit_spec, pars =pars)
+```
+
+```{r save fit_spec}
+#save as RDS
+fit_spec@stanmodel@dso <- new("cxxdso")
+saveRDS(fit_spec, file = "fit_spec.rds")
+
+```
+
+```{r fit_spec likelihood}
+log_lik_spec <- extract_log_lik(fit_spec)
+loo_spec <- loo(log_lik_spec)
+print(loo_spec)
+```
+
+## d. sensitivity and specificity bias adjustment
+
+```{r fit_sens_spec}
+spec_asym<-0.99984
+model_data$fp<-model_data$num_asym_swabs*(1-spec_asym) 
+model_data$fp[which(model_data$fp == 0)]<-0.000160000000000049
+model_data$sensitivity[which(model_data$sensitivity == 0)]<-0.01 
+
+trial_dat <- list(N=num_subjects,
+                  C=model_data$C,
+                  A=model_data$A,
+                  fp=model_data$fp,
+                  vaccinated=model_data$vaccinated,
+                  rel_sens_asym=model_data$sensitivity,
+                  pers_yrs_at_risk=model_data$pers_yrs_at_risk
+)
+model <- stan_model(file = 'mod_bias.stan')
+timetaken<-system.time(fit_sens_spec<-sampling(object = model, data = trial_dat, chains = 4, cores = 4))
+
+print(fit_sens_spec, pars = pars)
+plot(fit_sens_spec, pars = pars)
+traceplot(fit_sens_spec, pars = pars, inc_warmup = TRUE)
+pairs(fit_sens_spec, pars = pars)
+```
+
+```{r save fit_sens_spec}
+#save as RDS
+fit_sens_spec@stanmodel@dso <- new("cxxdso")
+saveRDS(fit_sens_spec, file = "fit_sens_spec.rds")
+```
+
+```{r fit_sens_spec likelihood}
+log_lik_sens_spec <- extract_log_lik(fit_sens_spec)
+loo_sens_spec <- loo(log_lik_sens_spec)
+print(loo_sens_spec)
+```
+
+## e. significant covariates
+
+These were selected by backwards selection.
+
+```{r fit_cov_av}
+model_data$fp<-0
+model_data$sensitivity<-1
+
+trial_dat <- list(N=nrow(model_data),
+                  N_real=nrow(model_data),
+                  N_ref=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov1=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov2=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov4=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  
+                  N_cov4_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  N_cov2_cov4=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov2_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  N_cov2_cov4_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  N_cov1_cov5=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  N_cov1_cov4=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov1_cov4_cov5=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  
+                  N_cov4n=nrow(model_data[which(model_data$obese==0),]),
+                  N_cov4y=nrow(model_data[which(model_data$obese==1),]),
+                  
+                  C=model_data$C,
+                  A=model_data$A,
+                  vaccinated=model_data$vaccinated,
+                  pers_yrs_at_risk=model_data$pers_yrs_at_risk,
+                  fp=model_data$fp,
+                  rel_sens_asym=model_data$sensitivity,
+                  cov1=model_data$HCW_0,
+                  cov2=model_data$HCW_1plus,
+                  cov3=model_data$sc_age_decades_cen,
+                  cov4=model_data$obese,
+                  cov5=model_data$nonwhite
+                  ) 
+model <- stan_model(file = 'mod_cov_av.stan')
+
+system.time(fit_cov_av <- sampling(object = model, data = trial_dat, chains = 4, cores = 4, init=init_f))
+
+
+
+print(fit_cov_av, pars = pars)
+plot(fit_cov_av, pars = pars)
+traceplot(fit_cov_av, pars = pars, inc_warmup = TRUE)
+pairs(fit_cov_av, pars = pars)
+```
+
+
+```{r save fit_cov_av}
+#save as RDS
+fit_cov_av@stanmodel@dso <- new("cxxdso")
+saveRDS(fit_cov_av, file = "fit_cov_av.rds")
+```
+
+```{r fit_sens_spec likelihood}
+log_lik_cov_av <- extract_log_lik(fit_cov_av)
+loo_cov_av <- loo(log_lik_cov_av)
+print(loo_cov_av)
+```
+
+
+
+## f. significant covariates and sensitivity and specificity bias adjustment (final model)
+
+
+```{r fit_cov_sens_spec}
+spec_asym<-0.99984
+model_data$fp<-model_data$num_asym_swabs*(1-spec_asym)
+model_data$fp[which(model_data$fp == 0)]<-0.000160000000000049
+
+trial_dat <- list(N=nrow(model_data),
+                  N_real=nrow(model_data),
+                  N_ref=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov1=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov2=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov4=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  
+                  N_cov4_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  N_cov2_cov4=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov2_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  N_cov2_cov4_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  N_cov1_cov5=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  N_cov1_cov4=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov1_cov4_cov5=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  
+                  N_cov4n=nrow(model_data[which(model_data$obese==0),]),
+                  N_cov4y=nrow(model_data[which(model_data$obese==1),]),
+                  
+                  C=model_data$C,
+                  A=model_data$A,
+                  vaccinated=model_data$vaccinated,
+                  pers_yrs_at_risk=model_data$pers_yrs_at_risk,
+                  fp=model_data$fp,
+                  rel_sens_asym=model_data$sensitivity,
+                  cov1=model_data$HCW_0,
+                  cov2=model_data$HCW_1plus,
+                  cov3=model_data$sc_age_decades_cen,
+                  cov4=model_data$obese,
+                  cov5=model_data$nonwhite
+                  ) 
+model <- stan_model(file = 'mod_cov_av.stan')
+
+system.time(fit_cov_sens_spec <- sampling(object = model, data = trial_dat, chains = 4, cores = 4, init=init_f))
+
+print(fit_cov_sens_spec, pars = pars)
+plot(fit_cov_sens_spec, pars = pars)
+traceplot(fit_cov_sens_spec, pars = pars, inc_warmup = TRUE)
+pairs(fit_cov_sens_spec, pars = pars)
+```
+
+
+```{r save fit_cov_sens_spec}
+#save as RDS
+fit_cov_sens_spec@stanmodel@dso <- new("cxxdso")
+saveRDS(fit_cov_sens_spec, file = "fit_cov_sens_spec.rds")
+```
+
+```{r fit_cov_sens_spec likelihood}
+log_lik_cov_sens_spec <- extract_log_lik(fit_cov_sens_spec)
+loo_cov_sens_spec <- loo(log_lik_cov_sens_spec)
+print(loo_cov_sens_spec)
+```
+
+
+#3. Rstan model for showing the difference in parameter estimates across covariates
+
+Here the final model is run again but instead of centering age on the mean age (~45yrs), it is centered on 30 years. This gives the "reference" estimates for the figure.
+
+```{r fit_cov_sens_spec_fig}
+spec_asym<-0.99984
+model_data$fp<-model_data$num_asym_swabs*(1-spec_asym)
+model_data$fp[which(model_data$fp == 0)]<-0.000160000000000049
+
+trial_dat <- list(N=nrow(model_data),
+                  N_real=nrow(model_data),
+                  N_ref=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov1=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov2=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==0 & model_data$nonwhite==0),]),
+                  N_cov4=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  
+                  N_cov4_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  N_cov2_cov4=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov2_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  N_cov2_cov4_cov5=nrow(model_data[which(model_data$HCW_0==0 & model_data$HCW_1plus==1 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  N_cov1_cov5=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==0 & model_data$nonwhite==1),]),
+                  N_cov1_cov4=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==0),]),
+                  N_cov1_cov4_cov5=nrow(model_data[which(model_data$HCW_0==1 & model_data$HCW_1plus==0 & model_data$obese==1 & model_data$nonwhite==1),]),
+                  
+                  N_cov4n=nrow(model_data[which(model_data$obese==0),]),
+                  N_cov4y=nrow(model_data[which(model_data$obese==1),]),
+                  
+                  C=model_data$C,
+                  A=model_data$A,
+                  vaccinated=model_data$vaccinated,
+                  pers_yrs_at_risk=model_data$pers_yrs_at_risk,
+                  fp=model_data$fp,
+                  rel_sens_asym=model_data$sensitivity,
+                  cov1=model_data$HCW_0,
+                  cov2=model_data$HCW_1plus,
+                  cov3=model_data$sc_age_decades_30, #difference to averages model
+                  cov4=model_data$obese,
+                  cov5=model_data$nonwhite
+                  ) 
+model <- stan_model(file = 'mod_cov_av.stan')
+
+system.time(fit_cov_sens_spec_fig <- sampling(object = model, data = trial_dat, chains = 4, cores = 4, init=init_f))
+
+print(fit_cov_sens_spec_fig, pars = pars)
+plot(fit_cov_sens_spec_fig, pars = pars)
+traceplot(fit_cov_sens_spec_fig, pars = pars, inc_warmup = TRUE)
+pairs(fit_cov_sens_spec_fig, pars = pars)
+```
+
+
+```{r save fit_cov_sens_spec_fig}
+#save as RDS
+fit_cov_sens_spec_fig@stanmodel@dso <- new("cxxdso")
+saveRDS(fit_cov_sens_spec_fig, file = "fit_cov_sens_spec_fig.rds")
+```
+
+```{r fit_cov_sens_spec_fig likelihood}
+log_lik_cov_sens_spec_fig <- extract_log_lik(fit_cov_sens_spec_fig)
+loo_cov_sens_spec_fig <- loo(log_lik_cov_sens_spec_fig)
+print(loo_cov_sens_spec_fig)
+```
+
