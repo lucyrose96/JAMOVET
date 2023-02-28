@@ -1,0 +1,551 @@
+
+#1. Setup
+
+```{r Setup}
+library(rstan)
+library(tidyverse)
+library(foreach)
+library(doParallel)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+set.seed(1)
+```
+
+```{r setup for parallel processing}
+numCores <- detectCores()
+numCores
+registerDoParallel(numCores)
+```
+
+```{r load simulated datasets}
+c1<-read.csv("c1.csv")
+c2<-read.csv("c2.csv")
+c3<-read.csv("c3.csv")
+c4<-read.csv("c4.csv")
+```
+
+
+
+#2. Run models for unbiased data (c1)
+
+```{r Rstan model - separate analysis VEin}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_any")
+model <- stan_model(file = 'mod_vein.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)
+  dummy_variables <- model.matrix(~ arm, data = c1[which(c1$sim == i),])
+  d                    <-data.frame(cbind(Total=c1[which(c1$sim == i),]$Total, 
+                                               time_at_risk_years=c1[which(c1$sim == i),]$time_at_risk_years, 
+                                               sim=c1[which(c1$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  Total=d$Total,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_any")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_any), median(fit$VE_any))
+  })
+
+#summarise results
+sep_vein<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_vein, "sep_vein.csv", row.names = FALSE)
+sep_vein
+```
+
+
+```{r Rstan model - separate analysis VEsym}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+#results <- vector(mode = "list", length = desired_length)
+sims_vec<-1:num_sims
+pars = c("VE_sym")
+
+model <- stan_model(file = 'mod_vesym.stan')
+
+#add a for loop for sim column
+
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c1[which(c1$sim == i),])
+  d                    <-data.frame(cbind(C=c1[which(c1$sim == i),]$C, 
+                                               time_at_risk_years=c1[which(c1$sim == i),]$time_at_risk_years, 
+                                               sim=c1[which(c1$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  C=d$C,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_sym")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_sym), median(fit$VE_sym))
+  })
+
+#summarise results
+sep_vesym<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_vesym, "sep_vesym.csv", row.names = FALSE)
+sep_vesym
+
+```
+
+
+
+```{r Rstan model - separate analysis VEasym}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_asym")
+
+model <- stan_model(file = 'mod_veasym.stan')
+
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c1[which(c1$sim == i),])
+  d                    <-data.frame(cbind(A=c1[which(c1$sim == i),]$A, 
+                                               time_at_risk_years=c1[which(c1$sim == i),]$time_at_risk_years, 
+                                               sim=c1[which(c1$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  A=d$A,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_asym")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_asym), median(fit$VE_asym)) 
+  })
+
+#summarise results
+sep_veasym<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_veasym, "sep_veasym.csv", row.names = FALSE)
+sep_veasym
+```
+
+
+#3. Run models for biased specificity data (c2)
+
+```{r Rstan model - separate analysis VEin}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_any")
+
+model <- stan_model(file = 'mod_vein.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c2[which(c2$sim == i),])
+  d                    <-data.frame(cbind(Total=c2[which(c2$sim == i),]$Total, 
+                                               time_at_risk_years=c2[which(c2$sim == i),]$time_at_risk_years, 
+                                               sim=c2[which(c2$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  Total=d$Total,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_any")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_any), median(fit$VE_any))
+  })
+
+#summarise results
+sep_vein_spec<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_vein_spec, "sep_vein_spec.csv", row.names = FALSE)
+sep_vein_spec
+```
+
+```{r Rstan model - separate analysis VEsym}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_sym")
+
+model <- stan_model(file = 'mod_vesym.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c2[which(c2$sim == i),])
+  d                    <-data.frame(cbind(C=c2[which(c2$sim == i),]$C, 
+                                               time_at_risk_years=c2[which(c2$sim == i),]$time_at_risk_years, 
+                                               sim=c2[which(c2$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  C=d$C,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_sym")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_sym), median(fit$VE_sym))
+  })
+
+#summarise results
+sep_vesym_spec<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_vesym_spec, "sep_vesym_spec.csv", row.names = FALSE)
+sep_vesym_spec
+```
+
+```{r Rstan model - separate analysis VEasym}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_asym")
+
+model <- stan_model(file = 'mod_veasym.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c2[which(c2$sim == i),])
+  d                    <-data.frame(cbind(A=c2[which(c2$sim == i),]$A, 
+                                               time_at_risk_years=c2[which(c2$sim == i),]$time_at_risk_years, 
+                                               sim=c2[which(c2$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  A=d$A,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_asym")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_asym), median(fit$VE_asym))
+  })
+
+#summarise results
+sep_veasym_spec<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_veasym_spec, "sep_veasym_spec.csv", row.names = FALSE)
+```
+
+#4. Run models for biased sensitivity data (c3)
+
+
+```{r Rstan model - separate analysis VEin}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_any")
+
+model <- stan_model(file = 'mod_vein.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c3[which(c3$sim == i),])
+  d                    <-data.frame(cbind(Total=c3[which(c3$sim == i),]$Total, 
+                                               time_at_risk_years=c3[which(c3$sim == i),]$time_at_risk_years, 
+                                               sim=c3[which(c3$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  Total=d$Total,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_any")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_any), median(fit$VE_any))
+  })
+
+#summarise results
+sep_vein_sens<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_vein_sens, "sep_vein_sens.csv", row.names = FALSE)
+sep_vein_sens
+```
+
+```{r Rstan model - separate analysis VEsym}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_sym")
+
+model <- stan_model(file = 'mod_vesym.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c3[which(c3$sim == i),])
+  d                    <-data.frame(cbind(C=c3[which(c3$sim == i),]$C, 
+                                               time_at_risk_years=c3[which(c3$sim == i),]$time_at_risk_years, 
+                                               sim=c3[which(c3$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  C=d$C,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_sym")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_sym), median(fit$VE_sym))
+  })
+
+#summarise results
+sep_vesym_sens<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_vesym_sens, "sep_vesym_sens.csv", row.names = FALSE)
+sep_vesym_sens
+```
+
+```{r Rstan model - separate analysis VEasym}
+
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_asym")
+getwd()
+model <- stan_model(file = 'mod_veasym.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c3[which(c3$sim == i),])
+  d                    <-data.frame(cbind(A=c3[which(c3$sim == i),]$A, 
+                                               time_at_risk_years=c3[which(c3$sim == i),]$time_at_risk_years, 
+                                               sim=c3[which(c3$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  A=d$A,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_asym")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_asym), median(fit$VE_asym))
+  })
+
+#summarise results
+sep_veasym_sens<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_veasym_sens, "sep_veasym_sens.csv", row.names = FALSE)
+sep_veasym_sens
+```
+
+#5. Run models for biased specificity and sensitivity (adherence) data (c4)
+
+```{r Rstan model - separate analysis VEin}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_any")
+
+model <- stan_model(file = 'mod_vein.stan')
+
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c4[which(c4$sim == i),])
+  d                    <-data.frame(cbind(Total=c4[which(c4$sim == i),]$Total, 
+                                               time_at_risk_years=c4[which(c4$sim == i),]$time_at_risk_years, 
+                                               sim=c4[which(c4$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  Total=d$Total,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_any")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_any), median(fit$VE_any))
+  })
+
+#summarise results
+sep_vein_spec_sens<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_vein_spec_sens, "sep_vein_spec_sens.csv", row.names = FALSE)
+sep_vein_spec_sens
+```
+
+```{r Rstan model - separate analysis VEsym}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_sym")
+
+model <- stan_model(file = 'mod_vesym.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c4[which(c4$sim == i),])
+  d                    <-data.frame(cbind(C=c4[which(c4$sim == i),]$C, 
+                                               time_at_risk_years=c4[which(c4$sim == i),]$time_at_risk_years, 
+                                               sim=c4[which(c4$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  C=d$C,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_sym")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_sym), median(fit$VE_sym))
+  })
+
+#summarise results
+sep_vesym_spec_sens<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_vesym_spec_sens, "sep_vesym_spec_sens.csv", row.names = FALSE)
+sep_vesym_spec_sens
+```
+
+
+
+```{r Rstan model - separate analysis VEasym}
+desired_length <- num_sims
+results <- data.frame(sim=1:num_sims, mean_VE=rep(NA, num_sims), median_VE=rep(NA, num_sims))
+sims_vec<-1:num_sims
+pars = c("VE_asym")
+getwd()
+model <- stan_model(file = 'mod_veasym.stan')
+
+#add a for loop for sim column
+system.time(for (i in sims_vec) {
+  print(i)#printing this allows you to track the progress of the simulation
+  dummy_variables <- model.matrix(~ arm, data = c4[which(c4$sim == i),])
+  d                    <-data.frame(cbind(A=c4[which(c4$sim == i),]$A, 
+                                               time_at_risk_years=c4[which(c4$sim == i),]$time_at_risk_years, 
+                                               sim=c4[which(c4$sim == i),]$sim, 
+                                               dummy_variables))
+  names(d)[4:5]       <-c("intercept", "vaccinated")
+  trial_dat <- list(N=nrow(d), 
+                  A=d$A,
+                  vaccinated=d$vaccinated,
+                  pers_yrs_at_risk=d$time_at_risk_years
+                  )
+  premod_time<-print(Sys.time())
+  fit <- as.data.frame(sampling(object = model, data = trial_dat, chains = 4, cores = 4))%>%
+              select("VE_asym")
+  postmod_time<-print(Sys.time())
+  print(postmod_time-premod_time)
+  results[i,]<- c(print(sims_vec[i]), mean(fit$VE_asym), median(fit$VE_asym))
+  })
+
+#summarise results
+sep_veasym_spec_sens<-results%>%
+  summarise(
+    mean=mean(mean_VE),
+    lci=quantile(mean_VE, 0.025),
+    uci=quantile(mean_VE, 0.975)
+    )
+getwd()
+write.csv(sep_veasym_spec_sens, "sep_veasym_spec_sens.csv", row.names = FALSE)
+sep_veasym_spec_sens
+```
+
